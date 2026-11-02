@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Global + Videollamada WebRTC</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --chat-bg: #1e293b;
+            --text-color: #f8fafc;
+            --accent: #3b82f6;
+            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        aside {
+            width: 300px;
+            background: rgba(15, 23, 42, 0.95);
+            border-right: 1px solid #334155;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--chat-bg);
+            position: relative;
+        }
+
+        .chat-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid #334155;
+            font-size: 1.2rem;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Contenedor de Videos WebRTC */
+        .video-container {
+            display: flex;
+            gap: 10px;
+            padding: 10px 20px;
+            background: #0f172a;
+            border-bottom: 1px solid #334155;
+            justify-content: center;
+        }
+
+        video {
+            width: 160px;
+            height: 120px;
+            background: black;
+            border-radius: 8px;
+            object-fit: cover;
+            border: 2px solid #334155;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .message {
+            max-width: 70%;
+            padding: 10px 15px;
+            border-radius: 12px;
+            word-break: break-word;
+        }
+
+        .message.incoming {
+            background: #334155;
+            align-self: flex-start;
+        }
+
+        .message.outgoing {
+            background: var(--accent);
+            align-self: flex-end;
+        }
+
+        .chat-input-area {
+            padding: 15px;
+            background: #0f172a;
+            border-top: 1px solid #334155;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        input, select, button {
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #475569;
+            background: #1e293b;
+            color: white;
+            font-family: inherit;
+        }
+
+        button {
+            background: var(--accent);
+            cursor: pointer;
+            border: none;
+            font-weight: bold;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .settings-box {
+            margin-top: 20px;
+            border-top: 1px solid #334155;
+            padding-top: 15px;
+        }
+
+        .user-list {
+            margin-top: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+    <aside>
+        <h2>🌐 GlobalChat</h2>
+        <div id="login-section">
+            <label>Tu Nombre de Usuario:</label>
+            <input type="text" id="username-input" placeholder="Ej. Ana123">
+            <button onclick="login()" style="margin-top: 10px; width: 100%;">Entrar al Chat</button>
+        </div>
+
+        <div class="settings-box">
+            <h3>👥 Usuarios en Sala</h3>
+            <div id="users-container" class="user-list">Ninguno conectado</div>
+        </div>
+
+        <div class="settings-box">
+            <h3>⚙️ Personalización</h3>
+            <label>Tipo de Letra:</label>
+            <select id="font-select" onchange="changeFont()">
+                <option value="Segoe UI">Segoe UI</option>
+                <option value="Courier New">Courier New</option>
+                <option value="Georgia">Georgia</option>
+            </select>
+            <label style="margin-top: 10px; display: block;">Fondo de Chat:</label>
+            <input type="color" id="bg-color-picker" value="#1e293b" onchange="changeBackground()">
+        </div>
+    </aside>
+
+    <main>
+        <div class="chat-header">
+            <span>Sala Global de Conversación</span>
+            <div>
+                <button onclick="startCamera()" style="background: #10b981;">📹 Activar Cámara/Audio</button>
+                <button onclick="stopCamera()" style="background: #ef4444;">🛑 Colgar</button>
+            </div>
+        </div>
+
+        <!-- Visores de Video (Local y Remoto) -->
+        <div class="video-container">
+            <div>
+                <div style="font-size: 0.7rem; text-align:center;">Tú</div>
+                <video id="localVideo" autoplay muted playsinline></video>
+            </div>
+            <div>
+                <div style="font-size: 0.7rem; text-align:center;">Remoto</div>
+                <video id="remoteVideo" autoplay playsinline></video>
+            </div>
+        </div>
+        
+        <div class="chat-messages" id="messages-container"></div>
+
+        <div class="chat-input-area">
+            <input type="text" id="message-input" placeholder="Escribe un mensaje..." style="flex: 1;" onkeypress="checkEnter(event)">
+            <input type="file" id="file-input" style="display: none;" onchange="sendFile(event)">
+            <button onclick="document.getElementById('file-input').click()">📁 Archivo</button>
+            <button onclick="sendSticker('🔥')">🔥 Sticker</button>
+            <button onclick="sendMessage()">Enviar</button>
+        </div>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let myUsername = "";
+        let localStream;
+        let peerConnection;
+        let remoteSocketId = null;
+
+        // Configuración STUN gratuita de Google para WebRTC
+        const rtcConfig = {
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        };
+
+        function login() {
+            const input = document.getElementById('username-input').value.trim();
+            if(!input) return alert("Por favor ingresa un nombre");
+            myUsername = input;
+            socket.emit('register_user', { username: myUsername });
+            document.getElementById('login-section').innerHTML = `<p>Conectado como: <b>${myUsername}</b></p>`;
+        }
+
+        // --- FUNCIONES DE WEBRTC (CÁMARA Y AUDIO) ---
+        async function startCamera() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById('localVideo').srcObject = localStream;
+                alert("Cámara activada. Selecciona o espera a que otro usuario se conecte para iniciar videollamada.");
+            } catch (err) {
+                console.error("Error al acceder a la cámara:", err);
+                alert("No se pudo acceder a la cámara o micrófono. Revisa los permisos.");
+            }
+        }
+
+        function stopCamera() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                document.getElementById('localVideo').srcObject = null;
+            }
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            document.getElementById('remoteVideo').srcObject = null;
+        }
+
+        // Iniciar conexión hacia otro usuario
+        async function callUser(id) {
+            remoteSocketId = id;
+            peerConnection = new RTCPeerConnection(rtcConfig);
+
+            // Agregar mis pistas de video/audio al canal
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            // Recibir video del otro usuario
+            peerConnection.ontrack = event => {
+                document.getElementById('remoteVideo').srcObject = event.streams[0];
+            };
+
+            // Enviar candidatos ICE
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    socket.emit('candidate', { target: remoteSocketId, candidate: event.candidate });
+                }
+            };
+
+            // Crear Oferta SDP
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            socket.emit('offer', { target: remoteSocketId, offer: offer });
+        }
+
+        // Manejo de oferta entrante
+        socket.on('offer', async (data) => {
+            if (!localStream) await startCamera(); // Activar cámara automáticamente si entra llamada
+            remoteSocketId = data.sender;
+            peerConnection = new RTCPeerConnection(rtcConfig);
+
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            peerConnection.ontrack = event => {
+                document.getElementById('remoteVideo').srcObject = event.streams[0];
+            };
+
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    socket.emit('candidate', { target: remoteSocketId, candidate: event.candidate });
+                }
+            };
+
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('answer', { target: remoteSocketId, answer: answer });
+        });
+
+        socket.on('answer', async (data) => {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+        });
+
+        socket.on('candidate', async (data) => {
+            if (peerConnection) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+            }
+        });
+
+        // --- ACTUALIZAR LISTA DE USUARIOS ACTIVOS ---
+        socket.on('update_user_list', (users) => {
+            const container = document.getElementById('users-container');
+            container.innerHTML = '';
+            users.forEach(u => {
+                const div = document.createElement('div');
+                div.style.margin = "5px 0";
+                div.innerHTML = `🟢 ${u.username} ${u.id !== socket.id ? `<button onclick="callUser('${u.id}')" style="padding:2px 6px; font-size:0.7rem; float:right;">Llamar</button>` : '(Tú)'}`;
+                container.appendChild(div);
+            });
+        });
+
+        // --- MENSAJERÍA NORMAL ---
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            if(!input.value.trim()) return;
+            socket.emit('send_message', { type: 'text', content: input.value });
+            input.value = '';
+        }
+
+        function checkEnter(e) { if(e.key === 'Enter') sendMessage(); }
+        function sendSticker(emoji) { socket.emit('send_message', { type: 'sticker', content: emoji }); }
+
+        function sendFile(event) {
+            const file = event.target.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                socket.emit('send_message', { type: 'file', content: `<a href="${e.target.result}" download="${file.name}" style="color:white;">📄 Descargar: ${file.name}</a>` });
+            }
+            reader.readAsDataURL(file);
+        }
+
+        function changeFont() {
+            document.documentElement.style.setProperty('--font-family', document.getElementById('font-select').value);
+        }
+
+        function changeBackground() {
+            document.documentElement.style.setProperty('--chat-bg', document.getElementById('bg-color-picker').value);
+        }
+
+        socket.on('receive_message', (data) => {
+            const container = document.getElementById('messages-container');
+            const div = document.createElement('div');
+            div.className = `message ${data.senderName === myUsername ? 'outgoing' : 'incoming'}`;
+            div.innerHTML = data.type === 'sticker' 
+                ? `<b>${data.senderName}:</b> <span style="font-size: 2.5rem;">${data.content}</span>`
+                : `<b>${data.senderName}:</b> ${data.content}`;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        });
+    </script>
+</body>
+</html>
